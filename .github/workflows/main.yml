@@ -1,0 +1,70 @@
+
+name: Extract TikTok TV ZIP and Build APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "TikTokTV-Remote-GitHub-Project.zip"
+      - ".github/workflows/extract-tiktok-zip-and-build.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Extract the project ZIP
+        run: |
+          set -euo pipefail
+          ZIP="TikTokTV-Remote-GitHub-Project.zip"
+
+          if [ ! -f "$ZIP" ]; then
+            echo "Project ZIP not found in repository root!"
+            exit 1
+          fi
+
+          mkdir extracted
+          unzip -q "$ZIP" -d extracted
+
+          PROJECT_DIR="$(dirname "$(find extracted -name settings.gradle.kts -print -quit)")"
+
+          if [ -z "$PROJECT_DIR" ] || [ ! -f "$PROJECT_DIR/app/build.gradle.kts" ]; then
+            echo "Android project files were not found."
+            exit 1
+          fi
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Build the APK
+        run: |
+          cd "$PROJECT_DIR"
+          gradle --no-daemon assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: TikTokTV-Remote-debug-apk
+          path: extracted/**/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
